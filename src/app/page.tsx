@@ -1,118 +1,67 @@
-// =============================================================================
-// Dashboard Page — Premium Car Showroom
-// =============================================================================
-//
-// WHAT THIS FILE DOES:
-//   Renders the homepage with:
-//   1. Animated floating particle background
-//   2. Premium hero section: "Discover Your Next Drive"
-//   3. The ResultsGrid (search + cards)
-//   4. Footer with attributions
-// =============================================================================
-
 import ResultsGrid from "@/components/ResultsGrid";
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex flex-col relative overflow-hidden">
-      {/* ── Animated Background ── */}
-      {/* Gradient orbs that shift and pulse for a living feel */}
-      <div className="fixed inset-0 -z-10">
-        {/* Primary dark gradient base */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#050510] via-[#0a0a1a] to-[#050508]" />
+    <div className="min-h-screen flex flex-col relative overflow-hidden bg-[#020204]">
+      {/* ── Dynamic Moving Gradient Background ── */}
+      <div className="fixed inset-0 -z-10 animate-gradient-xy bg-gradient-to-br from-[#050515] via-[#090518] to-[#020204]" />
 
-        {/* Animated gradient orbs */}
-        <div className="absolute top-[-10%] left-[15%] w-[600px] h-[600px] bg-blue-600/[0.07] rounded-full blur-[150px] glow-pulse" />
-        <div className="absolute top-[20%] right-[10%] w-[500px] h-[500px] bg-violet-600/[0.06] rounded-full blur-[130px] glow-pulse" style={{ animationDelay: "1s" }} />
-        <div className="absolute bottom-[10%] left-[30%] w-[400px] h-[400px] bg-cyan-500/[0.05] rounded-full blur-[120px] glow-pulse" style={{ animationDelay: "2s" }} />
-        <div className="absolute top-[50%] right-[35%] w-[350px] h-[350px] bg-fuchsia-500/[0.04] rounded-full blur-[100px] glow-pulse" style={{ animationDelay: "3s" }} />
-
-        {/* Floating particles */}
-        {Array.from({ length: 20 }).map((_, i) => (
+      {/* Floating particles */}
+      <div className="fixed inset-0 -z-10 pointer-events-none">
+        {Array.from({ length: 25 }).map((_, i) => (
           <div
             key={i}
             className="particle"
             style={{
-              left: `${5 + (i * 4.7) % 90}%`,
-              animationDuration: `${8 + (i * 1.3) % 12}s`,
-              animationDelay: `${(i * 0.7) % 8}s`,
+              left: `${(i * 13.7) % 100}%`,
+              animationDuration: `${7 + (i * 1.3) % 8}s`,
+              animationDelay: `${(i * 0.7) % 5}s`,
               bottom: "-10px",
-              background: i % 3 === 0
-                ? "rgba(6, 182, 212, 0.4)"
-                : i % 3 === 1
-                  ? "rgba(139, 92, 246, 0.3)"
-                  : "rgba(236, 72, 153, 0.3)",
+              background: i % 2 === 0 ? "rgba(6, 182, 212, 0.5)" : "rgba(139, 92, 246, 0.4)",
               width: `${2 + (i % 3)}px`,
               height: `${2 + (i % 3)}px`,
+              boxShadow: `0 0 ${4 + (i % 5)}px rgba(6, 182, 212, 0.8)`,
             }}
           />
         ))}
       </div>
 
       {/* ── Hero Section ── */}
-      <header className="relative pt-24 pb-16 px-4 text-center">
-        {/* Subtle grid overlay */}
+      <header className="relative pt-28 pb-20 px-4 text-center z-10">
         <div
-          className="absolute inset-0 opacity-[0.02]"
+          className="absolute inset-0 opacity-[0.015]"
           style={{
-            backgroundImage:
-              "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
-            backgroundSize: "80px 80px",
+            backgroundImage: "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
+            backgroundSize: "100px 100px",
           }}
         />
 
-        {/* API badge */}
-        <div className="relative inline-flex items-center gap-2 rounded-full bg-white/[0.04] border border-white/[0.08] px-4 py-1.5 text-xs font-medium text-cyan-400/80 mb-10 backdrop-blur-sm">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-          Powered by NHTSA vPIC API
+        <div className="relative inline-flex items-center gap-2 rounded-full bg-white/[0.03] border border-white/[0.06] px-4 py-1.5 text-[11px] font-semibold tracking-widest uppercase text-cyan-400 mb-8 backdrop-blur-sm">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
+          NHTSA vPIC Global Data
         </div>
 
-        {/* Main headline */}
-        <h1 className="relative text-5xl sm:text-6xl lg:text-8xl font-bold tracking-tight text-white mb-6 text-glow">
-          Discover Your{" "}
-          <br className="hidden sm:block" />
-          <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 bg-clip-text text-transparent">
+        <h1 className="relative text-6xl sm:text-7xl lg:text-[5.5rem] font-extrabold tracking-tighter text-white mb-6 text-glow leading-[1.1]">
+          Discover Your <br className="hidden sm:block" />
+          <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
             Next Drive
           </span>
         </h1>
 
-        {/* Subtitle */}
-        <p className="relative text-zinc-500 max-w-2xl mx-auto text-lg sm:text-xl leading-relaxed mb-12">
-          Explore every vehicle ever registered in the NHTSA database,{" "}
-          <span className="text-zinc-400">brought to life with stunning imagery.</span>
+        <p className="relative text-zinc-400 max-w-2xl mx-auto text-lg sm:text-xl leading-relaxed mb-6 font-light">
+          Experience every vehicle ever registered. Unleash the world's most comprehensive automotive database.
         </p>
-
-        {/* Decorative separator */}
-        <div className="relative mx-auto max-w-lg h-px bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
       </header>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 pb-20 px-4 relative z-10">
+      <main className="flex-1 pb-24 px-4 relative z-20">
         <ResultsGrid />
       </main>
 
       {/* ── Footer ── */}
-      <footer className="relative z-10 border-t border-white/[0.04] py-8 px-4 text-center">
-        <p className="text-xs text-zinc-700">
-          Data from{" "}
-          <a
-            href="https://vpic.nhtsa.dot.gov/api/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-zinc-600 hover:text-cyan-400 transition-colors"
-          >
-            NHTSA vPIC API
-          </a>
-          {" · "}Images by{" "}
-          <a
-            href="https://unsplash.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-zinc-600 hover:text-cyan-400 transition-colors"
-          >
-            Unsplash
-          </a>
-          {" · "}For educational purposes only.
+      <footer className="relative z-10 border-t border-white/[0.04] py-8 px-4 text-center bg-[#020204]/80 backdrop-blur-xl">
+        <p className="text-xs text-zinc-600 font-medium tracking-wide">
+          DATA SOURCED FROM NHTSA VPIC API · IMAGES BY UNSPLASH
         </p>
       </footer>
     </div>

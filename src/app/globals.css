@@ -97,7 +97,7 @@ html {
   pointer-events: none;
 }
 
-/* ── Gradient Glow Pulse ── */
+/* ── Gradient glow pulse ── */
 @keyframes glow-pulse {
 
   0%,
@@ -112,6 +112,44 @@ html {
 
 .glow-pulse {
   animation: glow-pulse 4s ease-in-out infinite;
+}
+
+/* ── Dynamic Gradient Background ── */
+@keyframes gradient-xy {
+
+  0%,
+  100% {
+    background-size: 400% 400%;
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-size: 400% 400%;
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient-xy {
+  animation: gradient-xy 15s ease infinite;
+}
+
+/* ── Floating Effect ── */
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
 }
 
 /* ── Hero Text Glow ── */

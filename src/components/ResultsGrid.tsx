@@ -1,39 +1,19 @@
-// =============================================================================
-// ResultsGrid Component — Premium Car Showroom
-// =============================================================================
-//
-// WHAT THIS FILE DOES:
-//   1. Renders the SearchBar and handles search state.
-//   2. Fetches vehicle data from /api/vehicles.
-//   3. Fetches UNIQUE images per model from /api/images (e.g., "Ford Focus car").
-//   4. Renders premium shimmer skeletons while loading.
-//   5. Displays VehicleCards with staggered fade-in animations.
-//
-// IMAGE STRATEGY:
-//   - After vehicle results arrive, we fetch images for each UNIQUE model.
-//   - To stay within Unsplash's 50 req/hr free limit, we cap at 12 images.
-//   - Each query is "${make} ${model} car" for model-specific results.
-//   - Images are stored in a Map<modelKey, imageUrl>.
-// =============================================================================
-
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import SearchBar from "./SearchBar";
 import VehicleCard from "./VehicleCard";
-import type { VehicleModel } from "@/lib/types";
+import type { VehicleModel, VehicleType } from "@/lib/types";
 
 interface ApiSuccess {
     count: number;
     results: VehicleModel[];
-    searchCriteria: string | null;
 }
 
 interface ApiError {
     error: string;
 }
 
-/** Maximum number of unique model images to fetch (rate limit protection) */
 const MAX_IMAGE_FETCHES = 12;
 
 export default function ResultsGrid() {
@@ -41,165 +21,254 @@ export default function ResultsGrid() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [hasSearched, setHasSearched] = useState(false);
-    const [searchInfo, setSearchInfo] = useState<{ make: string; year?: number } | null>(null);
     const [imageMap, setImageMap] = useState<Record<string, string>>({});
 
-    const handleSearch = useCallback(async (make: string, year?: number) => {
+    // Filter states
+    const [currentMake, setCurrentMake] = useState<string>("");
+    const [availableTypes, setAvailableTypes] = useState<VehicleType[]>([]);
+
+    // Active filters
+    const [yearFilter, setYearFilter] = useState<string>("all");
+    const [typeFilter, setTypeFilter] = useState<string>("all");
+    const [sortOrder, setSortOrder] = useState<string>("az"); // "az" or "za"
+
+    // Primary search from the top bar
+    const handleInitialSearch = async (make: string) => {
+        setCurrentMake(make);
+        setYearFilter("all");
+        setTypeFilter("all");
+        setSortOrder("az");
+        setAvailableTypes([]);
+        await fetchVehicleData(make, "all", "all");
+        fetchAvailableTypes(make);
+    };
+
+    // Derived effect when filters change (we only fetch if we already have a make)
+    useEffect(() => {
+        if (currentMake) {
+            fetchVehicleData(currentMake, yearFilter, typeFilter);
+        }
+    }, [yearFilter, typeFilter, currentMake]);
+
+    const fetchVehicleData = async (make: string, year: string, type: string) => {
         setIsLoading(true);
         setError(null);
         setHasSearched(true);
-        setSearchInfo({ make, year });
-        setImageMap({});
+        setImageMap({}); // Reset images when list changes
 
         try {
-            // ── Step 1: Fetch vehicle data ──
             const params = new URLSearchParams({ make });
-            if (year) params.set("year", year.toString());
+            if (year !== "all") params.set("year", year);
+            if (type !== "all") params.set("type", type);
 
-            const vehicleResponse = await fetch(`/api/vehicles?${params.toString()}`);
-            const vehicleData: ApiSuccess | ApiError = await vehicleResponse.json();
+            const res = await fetch(`/api/vehicles?${params.toString()}`);
+            const data: ApiSuccess | ApiError = await res.json();
 
-            if (!vehicleResponse.ok) {
-                throw new Error((vehicleData as ApiError).error || "Something went wrong");
-            }
+            if (!res.ok) throw new Error((data as ApiError).error || "Failed");
 
-            const vehicles = (vehicleData as ApiSuccess).results || [];
-            setResults(vehicles);
+            const vehicles = (data as ApiSuccess).results || [];
 
-            // ── Step 2: Fetch unique images per model (non-blocking) ──
-            // We do this AFTER setting results so the UI shows cards immediately
-            // (with gradient fallbacks), then images pop in as they load.
-            if (vehicles.length > 0) {
-                fetchModelImages(vehicles, make);
+            // Deduplicate models because NHTSA sometimes returns dupes
+            const uniqueModels = Array.from(new Map(vehicles.map((v) => [v.Model_ID, v])).values());
+
+            setResults(uniqueModels);
+
+            if (uniqueModels.length > 0) {
+                fetchModelImages(uniqueModels, make);
             }
         } catch (err) {
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "An unexpected error occurred. Please try again."
-            );
+            setError(err instanceof Error ? err.message : "An error occurred.");
             setResults([]);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    };
 
-    /** Fetch images for unique models, capped at MAX_IMAGE_FETCHES */
+    const fetchAvailableTypes = async (make: string) => {
+        try {
+            const res = await fetch(`/api/vehicle-types?make=${encodeURIComponent(make)}`);
+            if (res.ok) {
+                const data = await res.json();
+                setAvailableTypes(data.results || []);
+            }
+        } catch (e) {
+            console.error("Failed to load types");
+        }
+    };
+
     const fetchModelImages = async (vehicles: VehicleModel[], make: string) => {
-        // Deduplicate by model name
-        const uniqueModels = Array.from(
-            new Map(vehicles.map((v) => [v.Model_Name, v])).values()
-        ).slice(0, MAX_IMAGE_FETCHES);
+        const uniqueModels = Array.from(new Map(vehicles.map(v => [v.Model_Name, v])).values()).slice(0, MAX_IMAGE_FETCHES);
 
-        // Fetch all images in parallel
         const entries = await Promise.all(
             uniqueModels.map(async (vehicle) => {
                 try {
                     const query = `${make} ${vehicle.Model_Name} car`;
-                    const res = await fetch(
-                        `/api/images?query=${encodeURIComponent(query)}`
-                    );
+                    const res = await fetch(`/api/images?query=${encodeURIComponent(query)}`);
                     if (res.ok) {
                         const data = await res.json();
                         if (data.images && data.images.length > 0) {
                             return [vehicle.Model_Name, data.images[0].url] as const;
                         }
                     }
-                } catch {
-                    // Silently fail — gradient fallback will be used
-                }
+                } catch { }
                 return null;
             })
         );
 
-        // Build the image map
         const newMap: Record<string, string> = {};
         for (const entry of entries) {
-            if (entry) {
-                newMap[entry[0]] = entry[1];
-            }
+            if (entry) newMap[entry[0]] = entry[1];
         }
         setImageMap(newMap);
     };
 
-    return (
-        <div className="w-full max-w-6xl mx-auto px-4">
-            {/* ── Search Bar ── */}
-            <SearchBar onSearch={handleSearch} isLoading={isLoading} />
+    // Apply local sorting
+    const sortedResults = useMemo(() => {
+        return [...results].sort((a, b) => {
+            const nameA = a.Model_Name.toLowerCase();
+            const nameB = b.Model_Name.toLowerCase();
+            if (sortOrder === "az") return nameA.localeCompare(nameB);
+            return nameB.localeCompare(nameA);
+        });
+    }, [results, sortOrder]);
 
-            {/* ── Results Area ── */}
-            <div className="mt-12">
-                {/* Loading — Premium shimmer skeletons */}
-                {isLoading && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {Array.from({ length: 6 }).map((_, i) => (
-                            <div
-                                key={i}
-                                className="rounded-2xl overflow-hidden bg-white/[0.03] border border-white/[0.06]"
-                                style={{
-                                    animationDelay: `${i * 100}ms`,
-                                    animationFillMode: "both",
-                                }}
-                            >
-                                {/* Image skeleton (4:3 aspect) */}
-                                <div className="aspect-[4/3] shimmer" />
-                                {/* Content skeleton */}
-                                <div className="p-5 space-y-3">
-                                    <div className="h-5 w-3/4 rounded-lg shimmer" />
-                                    <div className="h-3 w-1/2 rounded-lg shimmer" />
-                                    <div className="h-10 w-full rounded-xl shimmer mt-4" />
+    const clearFilters = () => {
+        setYearFilter("all");
+        setTypeFilter("all");
+        setSortOrder("az");
+    };
+
+    const hasActiveFilters = yearFilter !== "all" || typeFilter !== "all" || sortOrder !== "az";
+
+    return (
+        <div className="w-full max-w-7xl mx-auto">
+            {/* Search Bar Container */}
+            <div className="-mt-8 mb-12">
+                <SearchBar onSearch={handleInitialSearch} isLoading={isLoading && !hasSearched} />
+            </div>
+
+            {/* Results Area */}
+            {hasSearched && (
+                <div className="space-y-8 animate-[fadeInUp_0.5s_ease-out]">
+
+                    {/* ── Filter & Sort Header ── */}
+                    <div className="rounded-[2rem] bg-white/[0.02] backdrop-blur-xl border border-white/[0.05] p-6 shadow-2xl">
+                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+
+                            {/* Left: Summary */}
+                            <div>
+                                <div className="flex items-center gap-3 mb-1">
+                                    <h2 className="text-2xl font-bold text-white tracking-tight capitalize">{currentMake}</h2>
+                                    <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-sm font-semibold">
+                                        {results.length} Models
+                                    </span>
+                                </div>
+                                <p className="text-zinc-500 text-sm">Refine your search using the advanced filters below.</p>
+                            </div>
+
+                            {/* Right: Controls */}
+                            <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
+
+                                {/* Year Dropdown */}
+                                <div className="flex flex-col gap-1 w-full sm:w-auto">
+                                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Model Year</label>
+                                    <select
+                                        value={yearFilter}
+                                        onChange={(e) => setYearFilter(e.target.value)}
+                                        className="bg-[#050510] border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 outline-none focus:border-cyan-500/50 appearance-none min-w-[120px]"
+                                    >
+                                        <option value="all">All Years</option>
+                                        {Array.from({ length: 6 }).map((_, i) => {
+                                            const y = 2025 - i;
+                                            return <option key={y} value={y}>{y}</option>;
+                                        })}
+                                    </select>
+                                </div>
+
+                                {/* Sort Dropdown */}
+                                <div className="flex flex-col gap-1 w-full sm:w-auto">
+                                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Sort By</label>
+                                    <select
+                                        value={sortOrder}
+                                        onChange={(e) => setSortOrder(e.target.value)}
+                                        className="bg-[#050510] border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 outline-none focus:border-cyan-500/50 appearance-none min-w-[150px]"
+                                    >
+                                        <option value="az">Name (A ➝ Z)</option>
+                                        <option value="za">Name (Z ➝ A)</option>
+                                    </select>
+                                </div>
+
+                                {/* Clear Filters */}
+                                {hasActiveFilters && (
+                                    <button
+                                        onClick={clearFilters}
+                                        className="mt-5 text-sm text-zinc-400 hover:text-white transition-colors underline underline-offset-4 decoration-zinc-700 hover:decoration-white"
+                                    >
+                                        Clear Filters
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Vehicle Type Pills */}
+                        {availableTypes.length > 0 && (
+                            <div className="mt-8 pt-6 border-t border-white/[0.05]">
+                                <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-3">Vehicle Types</label>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        onClick={() => setTypeFilter("all")}
+                                        className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all ${typeFilter === "all" ? "bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.4)]" : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08]"}`}
+                                    >
+                                        All Types
+                                    </button>
+                                    {availableTypes.map((type) => (
+                                        <button
+                                            key={type.VehicleTypeId}
+                                            onClick={() => setTypeFilter(type.VehicleTypeName)}
+                                            className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all ${typeFilter === type.VehicleTypeName ? "bg-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]" : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200"}`}
+                                        >
+                                            {type.VehicleTypeName}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-                        ))}
+                        )}
                     </div>
-                )}
 
-                {/* Error State */}
-                {!isLoading && error && (
-                    <div className="text-center py-16">
-                        <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-red-500/10 border border-red-500/10 mb-6">
-                            <svg className="w-10 h-10 text-red-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                            </svg>
+                    {/* ── Status display (Loading / Error / Empty) ── */}
+                    {isLoading && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-4">
+                            {Array.from({ length: 6 }).map((_, i) => (
+                                <div key={i} className="rounded-[1.5rem] bg-white/[0.02] border border-white/[0.05] overflow-hidden" style={{ animationDelay: `${i * 100}ms` }}>
+                                    <div className="aspect-[4/3] shimmer" />
+                                    <div className="p-6 space-y-4">
+                                        <div className="h-6 w-2/3 rounded-lg shimmer" />
+                                        <div className="h-4 w-1/3 rounded-lg shimmer" />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
-                        <h3 className="text-xl font-semibold text-red-400 mb-2">Something Went Wrong</h3>
-                        <p className="text-zinc-500 max-w-md mx-auto">{error}</p>
-                    </div>
-                )}
+                    )}
 
-                {/* Empty State */}
-                {!isLoading && !error && hasSearched && results.length === 0 && (
-                    <div className="text-center py-16">
-                        <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-violet-500/10 border border-violet-500/10 mb-6">
-                            <svg className="w-10 h-10 text-violet-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                            </svg>
+                    {!isLoading && error && (
+                        <div className="py-20 text-center">
+                            <p className="text-red-400 font-semibold">{error}</p>
                         </div>
-                        <h3 className="text-xl font-semibold text-zinc-300 mb-2">No Vehicles Found</h3>
-                        <p className="text-zinc-500 max-w-md mx-auto">
-                            No models found for &quot;{searchInfo?.make}&quot;
-                            {searchInfo?.year ? ` (${searchInfo.year})` : ""}. Try a different make or remove the year filter.
-                        </p>
-                    </div>
-                )}
+                    )}
 
-                {/* Success State — Premium cards */}
-                {!isLoading && !error && results.length > 0 && (
-                    <>
-                        {/* Results count */}
-                        <div className="flex items-center justify-between mb-8">
-                            <p className="text-sm text-zinc-500">
-                                Found{" "}
-                                <span className="font-semibold text-cyan-400">{results.length}</span>{" "}
-                                model{results.length !== 1 ? "s" : ""} for{" "}
-                                <span className="font-semibold text-white">{searchInfo?.make}</span>
-                                {searchInfo?.year && <span className="text-zinc-400"> ({searchInfo.year})</span>}
-                            </p>
+                    {!isLoading && !error && sortedResults.length === 0 && (
+                        <div className="py-24 text-center">
+                            <div className="inline-flex w-16 h-16 rounded-3xl bg-white/[0.03] border border-white/[0.06] items-center justify-center mb-6">
+                                <span className="text-3xl">📭</span>
+                            </div>
+                            <h3 className="text-2xl font-bold text-white mb-2">No models found</h3>
+                            <p className="text-zinc-500">Try adjusting your filters or year range.</p>
                         </div>
+                    )}
 
-                        {/* Card grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {results.map((vehicle, index) => (
+                    {!isLoading && !error && sortedResults.length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-4">
+                            {sortedResults.map((vehicle, index) => (
                                 <VehicleCard
                                     key={`${vehicle.Make_ID}-${vehicle.Model_ID}`}
                                     vehicle={vehicle}
@@ -208,26 +277,9 @@ export default function ResultsGrid() {
                                 />
                             ))}
                         </div>
-                    </>
-                )}
-
-                {/* Initial State */}
-                {!isLoading && !hasSearched && (
-                    <div className="text-center py-20">
-                        <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-violet-500/10 border border-white/[0.06] mb-8">
-                            <svg className="w-12 h-12 text-cyan-400/50" fill="none" viewBox="0 0 24 24" strokeWidth={0.8} stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.079-.481 1.035-1.1a60.27 60.27 0 0 0-1.341-7.575 1.126 1.126 0 0 0-.768-.794C18.225 8.862 16.318 8.25 12 8.25s-6.225.612-7.506 1.03a1.126 1.126 0 0 0-.768.794 60.293 60.293 0 0 0-1.341 7.576c-.044.618.414 1.1 1.035 1.1H3.75m14.5 0H9.75" />
-                            </svg>
-                        </div>
-                        <h3 className="text-2xl font-semibold text-zinc-300 mb-3">
-                            Search for Vehicles
-                        </h3>
-                        <p className="text-zinc-600 max-w-md mx-auto text-base">
-                            Enter a vehicle make like &quot;Toyota&quot;, &quot;BMW&quot;, or &quot;Ford&quot; and optionally a model year to explore.
-                        </p>
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
