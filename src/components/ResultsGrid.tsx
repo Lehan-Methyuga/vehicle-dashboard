@@ -89,7 +89,9 @@ export default function ResultsGrid() {
             const res = await fetch(`/api/vehicle-types?make=${encodeURIComponent(make)}`);
             if (res.ok) {
                 const data = await res.json();
-                setAvailableTypes(data.results || []);
+                const types = data.results || [];
+                const uniqueTypes = Array.from(new Map(types.map((t: VehicleType) => [t.VehicleTypeId, t])).values());
+                setAvailableTypes(uniqueTypes as VehicleType[]);
             }
         } catch (e) {
             console.error("Failed to load types");
@@ -223,7 +225,7 @@ export default function ResultsGrid() {
                                     </button>
                                     {availableTypes.map((type) => (
                                         <button
-                                            key={type.VehicleTypeId}
+                                            key={`type-${type.VehicleTypeId}`}
                                             onClick={() => setTypeFilter(type.VehicleTypeName)}
                                             className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all ${typeFilter === type.VehicleTypeName ? "bg-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]" : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200"}`}
                                         >
